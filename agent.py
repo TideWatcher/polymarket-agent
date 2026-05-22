@@ -99,99 +99,64 @@ def save_memory(memory: dict):
 def scan_markets() -> List[dict]:
     """
     扫描 Polymarket 活跃市场，返回候选列表。
-    使用 CLOB API（包含完整 token 数据）+ gamma API（获取成交量和分类）。
+    直接使用 CLOB API（包含完整 token 数据），逐个获取价格。
     """
     try:
-        # Step 1: 从 CLOB API 获取有 token 数据的活跃市场
+        # 从 CLOB API 获取活跃市场（包含 token 数据）
         r = requests.get(
             f"{CLOB_HOST}/markets",
-            params={"active": "true", "closed": "false", "limit": 100},
+            params={"active": "true", "closed": "false", "limit": 30},
             timeout=15,
         )
         r.raise_for_status()
         clob_markets = r.json().get("data", [])
 
-        # 建立 condition_id → clob market 索引（方便后面匹配）
-        clob_by_id = {}
-        for m in clob_markets:
-            cid = m.get("condition_id", "")
-            if cid:
-                clob_by_id[cid] = m
-
-        # Step 2: 从 gamma API 获取成交量和市场描述
-        rg = requests.get(
-            f"{GAMMA_API}/markets",
-            params={
-                "active": "true",
-                "closed": "false",
-                "limit": 100,
-                "order": "volume",
-                "ascending": "false",
-            },
-            timeout=15,
-        )
-        rg.raise_for_status()
-        gamma_markets = rg.json()
-
         candidates = []
-        for gm in gamma_markets:
-            # 获取价格
-            prices = gm.get("outcomePrices", [])
-            if len(prices) < 2:
+        for m in clob_markets:
+            tokens = m.get("tokens", [])
+            if len(tokens) < 2:
                 continue
 
-            try:
-                yes_p = float(prices[0])
-            except (ValueError, TypeError):
-                continue
+            # 找 YES / NO token
+            yes_tok = next(
+                (t for t in tokens if str(t.get("outcome", "")).upper() == "YES"),
+                tokens[0],
+            )
+            no_tok = next(
+                (t for t in tokens if str(t.get("outcome", "")).upper() == "NO"),
+                tokens[1] if len(tokens) > 1 else None,
+            )
 
-            # 过滤极端价格
-            if yes_p < 0.04 or yes_p > 0.96:
-                continue
-
-            # 获取成交量
-            vol = float(gm.get("volume24hr") or gm.get("volume") or 0)
-            if vol < 50:
-                continue
-
-            # 从 CLOB 数据中找到对应的 token
-            cond_id = gm.get("conditionId", "")
-            clob_m  = clob_by_id.get(cond_id)
-
-            # 如果 CLOB 有数据，用 CLOB 的 token；否则尝试 gamma 的 tokens
-            tokens = []
-            if clob_m:
-                tokens = clob_m.get("tokens", [])
-            if not tokens:
-                tokens = gm.get("tokens", [])
-
-            # 寻找 YES/NO token
-            yes_token = next((t for t in tokens if str(t.get("outcome","")).upper() == "YES"), None)
-            no_token  = next((t for t in tokens if str(t.get("outcome","")).upper() == "NO"),  None)
-
-            # 如果没有命名 token，用位置推断
-            if not yes_token and len(tokens) >= 1:
-                yes_token = tokens[0]
-            if not no_token and len(tokens) >= 2:
-                no_token = tokens[1]
-
-            if not yes_token:
-                continue
-
-            yes_tid = yes_token.get("token_id", "")
-            no_tid  = no_token.get("token_id", "") if no_token else ""
-
+            yes_tid = yes_tok.get("token_id", "")
+            no_tid  = no_tok.get("token_id", "") if no_tok else ""
             if not yes_tid:
                 continue
 
-            gm["_yes_price"] = yes_p
-            gm["_no_price"]  = 1 - yes_p
-            gm["_yes_token"] = yes_tid
-            gm["_no_token"]  = no_tid
-            candidates.append(gm)
+            # 获取当前价格
+            try:
+                pr = requests.get(
+                    f"{CLOB_HOST}/midpoint",
+                    params={"token_id": yes_tid},
+                    timeout=5,
+                )
+                if not pr.ok:
+                    continue
+                yes_p = float(pr.json().get("mid", 0))
+            except Exception:
+                continue
+
+            # 过滤极端价格（已基本确定的市场）
+            if yes_p < 0.04 or yes_p > 0.96:
+                continue
+
+            m["_yes_price"] = yes_p
+            m["_no_price"]  = round(1 - yes_p, 6)
+            m["_yes_token"] = yes_tid
+            m["_no_token"]  = no_tid
+            candidates.append(m)
 
         log.info(f"扫描到 {len(candidates)} 个候选市场")
-        return candidates[:15]
+        return candidates[:10]
 
     except Exception as e:
         log.error(f"扫描市场失败: {e}")
