@@ -1,0 +1,9 @@
+*.log
+agent_memory.json
+__pycache__/
+*.pyc
+.env
+venv/
+bot-env/
+.DS_Store
+*.jsonl

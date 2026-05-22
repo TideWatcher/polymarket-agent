@@ -1,0 +1,4 @@
+requests>=2.34
+eth-account>=0.13
+anthropic>=0.25
+py-clob-client-v2
