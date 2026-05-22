@@ -112,6 +112,8 @@ def scan_markets() -> List[dict]:
         clob_markets = r.json().get("data", [])
 
         candidates = []
+        sess = requests.Session()  # 复用连接，提速
+
         for m in clob_markets:
             tokens = m.get("tokens", [])
             if len(tokens) < 2:
@@ -132,12 +134,12 @@ def scan_markets() -> List[dict]:
             if not yes_tid:
                 continue
 
-            # 获取当前价格
+            # 获取当前价格（复用 session）
             try:
-                pr = requests.get(
+                pr = sess.get(
                     f"{CLOB_HOST}/midpoint",
                     params={"token_id": yes_tid},
-                    timeout=5,
+                    timeout=4,
                 )
                 if not pr.ok:
                     continue
