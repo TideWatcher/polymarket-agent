@@ -620,6 +620,8 @@ def run():
 
     last_scan    = 0.0
     last_reflect = 0.0
+    last_heartbeat = 0.0
+    HEARTBEAT_INTERVAL = 3600  # 每小时状态摘要
 
     while True:
         try:
@@ -689,7 +691,24 @@ def run():
 
                 last_scan = time.time()
 
-            # ── 3. 定期复盘 ─────────────────────────────────────────────────
+            # ── 3. 定期心跳 (Telegram 状态摘要) ────────────────────────────
+            if now - last_heartbeat >= HEARTBEAT_INTERVAL:
+                perf = memory["performance"]
+                open_pos = sum(1 for d in memory["decisions"] if d.get("outcome") is None)
+                spent = sum(
+                    d.get("size_usdc", 0) for d in memory["decisions"]
+                    if d.get("outcome") is None
+                )
+                tg(
+                    f"💓 *Agent 心跳*\n"
+                    f"战绩: {perf.get('wins',0)}/{perf.get('total_trades',0)} | "
+                    f"总盈亏: ${perf.get('total_pnl',0):.2f}\n"
+                    f"持仓中: {open_pos} 笔 (${spent:.2f}) | "
+                    f"预算剩余: ${BUDGET_USDC - spent:.2f}"
+                )
+                last_heartbeat = now
+
+            # ── 4. 定期复盘 ─────────────────────────────────────────────────
             if now - last_reflect >= REFLECT_INTERVAL:
                 log.info(f"\n{'━'*50}")
                 log.info("📊 Claude 开始复盘")
