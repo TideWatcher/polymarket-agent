@@ -6,6 +6,7 @@
 |------|------|
 | `agent.py` | AI Agent：Claude 自主扫描市场、判断概率偏差、下单、复盘进化 |
 | `copy_trader.py` | 跟单策略：监控聪明钱地址，自动跟随买卖 |
+| `dashboard.py` | 跟单策略的实时监控面板 |
 | `monitor.py` | AI Agent 的监控面板 |
 
 ## 跟单策略（copy_trader.py）
@@ -55,6 +56,22 @@ python3 copy_trader.py
 | `COPY_SLIPPAGE` | `0.03` | 当前价比 leader 成交价高出此值则放弃 |
 | `COPY_POLL_INTERVAL` | `60` | 轮询间隔（秒） |
 | `TG_TOKEN` / `TG_CHAT_ID` | - | Telegram 通知（可选） |
+
+### 监控面板（dashboard.py）
+
+```bash
+DEMO=1 python3 dashboard.py     # 演示模式：模拟数据流，先看效果
+python3 dashboard.py            # 正式：读 copy_state.json + CLOB 实时价格
+```
+
+浏览器打开 `http://localhost:8090`（`PORT` 可改）：
+
+- 已实现总盈亏大数字 + 累计盈亏曲线 + 最近 4 笔平仓
+- 概率格盘：每笔平仓一个小球，按盈亏落进红（亏）/蓝（盈）分布柱
+- 各 leader 跟单贡献对比（笔数 / 胜率 / 已实现盈亏）
+- 在跟持仓实时价格与浮动盈亏（30s 缓存，页面 10s 自刷新）
+
+和 `copy_trader.py` 在同一目录运行即可，只读 `copy_state.json`，不碰交易。
 
 ### 注意
 
